@@ -14,6 +14,7 @@ import { provision, loadApiKeyFromConfig } from "./identity/provision.js";
 import { loadConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
 import { createConwayClient } from "./conway/client.js";
+import { createVenkaiClient } from "./venkai/infra/client.js";
 import { createInferenceClient } from "./conway/inference.js";
 import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
@@ -238,12 +239,16 @@ async function run(): Promise<void> {
     db.setIdentity("automatonId", automatonId);
   }
 
-  // Create Conway client
-  const conway = createConwayClient({
-    apiUrl: config.conwayApiUrl,
-    apiKey,
-    sandboxId: config.sandboxId,
-  });
+  // Create Conway client — or the Venkai self-hosted client (VENKAI_INFRA=1):
+  // sandboxes run as Docker containers over SSH on Venkai's Hetzner boxes.
+  const conway =
+    process.env.VENKAI_INFRA === "1"
+      ? createVenkaiClient({ sandboxId: config.sandboxId })
+      : createConwayClient({
+          apiUrl: config.conwayApiUrl,
+          apiKey,
+          sandboxId: config.sandboxId,
+        });
 
   // Register automaton identity (one-time, immutable)
   const registrationState = db.getIdentity("conwayRegistrationStatus");

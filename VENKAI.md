@@ -93,26 +93,36 @@ Le fork n'est pas un fork mort : il évolue tout seul, dans les deux sens.
 | Marketplace skills en cours | 800+ skills Hermes déjà disponibles |
 | — | Connecteurs métier : Trading Lab (43 MCP tools), Clipping Lab |
 
-## 6. Monétisation via la traction de venkai.fr
+## 6. Monétisation multi-canal (pas seulement venkai.fr)
 
-Le coût marginal d'un agent ≈ 0 (infra déjà payée, inference déjà payée) : on peut
-donner beaucoup gratuitement et marge sur le reste.
+Le coût marginal d'un agent ≈ 0 (infra déjà payée, inference déjà payée). Les offres sont
+LIVE sur Stripe (compte existant, facturation EUR) et vendables PARTOUT, pas que sur venkai.fr :
 
-1. **Free tier "Agent Vénitien"** : un agent par compte, sous-domaine
-   `agent.venkai.fr`, modèle local/MiMo. Sert d'acquisition : chaque agent est une
-   vitrine vivante sur venkai.fr.
-2. **Pro (€29-99/mo)** : multi-agents, réplication supervisée, skills premium,
-   inference MiMo dédiée, SLA.
-3. **Trading (€199/mo)** : connecteurs `tl.venkai.fr`, agents de veille/backtest
-   (attention : pas de promesse de rendu — travail honnête = veille, recherche,
-   exécution de tâches rémunérées, conformément à la Law II).
-4. **White-label / B2B** : runtime installé chez le client, sous-marque
-   `client.venkai.fr`, facturation à la licence (relais `findaclient`/B2B skills).
-5. **Skills & templates** : packs sectoriels (cybersécurité, trading, fiscalité BE)
-   vendus en one-shot ou en abonnement.
+| Offre | Prix | Lien A | Lien B (A/B test) |
+|---|---|---|---|
+| Automaton Pro (mensuel) | 94 EUR | buy.stripe.com/fZu3cv0Lmebyakk3BH5AQ02 | buy.stripe.com/4gM9ATcu4ffCdwwegl5AQ06 |
+| Automaton Trading (mensuel) | 238 EUR | buy.stripe.com/fZucN50Lm4AYboo5JP5AQ03 | buy.stripe.com/4gM6oH51Cebydww8W15AQ07 |
+| Pack Skills (unique) | 43 EUR | buy.stripe.com/dRm6oH0Lm0kI9gg4FL5AQ04 | buy.stripe.com/00w5kDfGg5F28cca055AQ08 |
+| Setup & Migration (unique) | 487 EUR | buy.stripe.com/7sY9AT51C3wU644fkp5AQ05 | buy.stripe.com/cNi14n0Lm6J65004FL5AQ09 |
 
-Ordre de grandeur : une box Hetzner (~€40/mo) sert des dizaines d'agents ; le
-premier client Pro couvre déjà l'infra entière.
+Promos réelles (vraie date de fin et plafond appliqués par Stripe, jamais de faux prix barré) :
+`HALLOWEEN26` (-15% x3 mois, 25 max, fin 31/10), `HALLOWEEN26-SKILLS` (pack offert, 25 max),
+`BLACKFRIDAY26` (-20% x3 mois, 50 max, fin 01/12). Détails + plan A/B + script VSL : `docs/CONVERSION.md`.
+
+Canaux de distribution (tout pointe vers les mêmes liens Stripe) :
+1. **GitHub** : README du fork + releases + GitHub Sponsors (open source = acquisition).
+2. **VSL + YouTube/X/LinkedIn** : démo réelle d'agent au travail, CTA vers lien A/B.
+3. **Product Hunt / lancement** : effet de levier sur le fork auto-évolutif.
+4. **Marketplaces** : packs skills sur Gumroad/Lemon Squeezy (pas besoin de venkai.fr).
+5. **Prospection directe** : pipeline `findaclient` + emails (Outreach) vers agences/SMB EU.
+6. **White-label agences** : licence runtime installée chez le client, sous-marque propre.
+7. **Consulting/formation** : Malt/Comet (BE), setup sur mesure facturé (offre Setup 487 EUR).
+8. **Partenariats** : affiliation Hetzner, revendeurs, intégrateurs MCP.
+
+Automatisation argent → service : `src/venkai/billing/` (ledger EUR + Stripe webhook
+vérifié HMAC + provisioner Hetzner/Cloudflare/Resend/Slack). Un paiement Stripe
+provisionne l'agent, crée le sous-domaine `*.venkai.fr`, notifie le client et Slack.
+Idempotent par event id (les retries Stripe ne double-provisionnent pas).
 
 ## 7. Garanties conservées
 
