@@ -77,8 +77,13 @@ s'arrêtent le 31 octobre à 23h59."
 - [ ] Étude de cas d'un client existant (ULB MUN, PlayerProManagement, X-Ray sont des clients Stripe réels : demander l'autorisation d'en parler).
 - [ ] Démo live hebdomadaire (réel seulement si elle a lieu).
 
-## 7. Check these (à trancher, owner)
+## 7. Décisions prises (max revenu, honnêtes)
 
-1. Plafonds de rédemptions (25 / 50) : confirmer ou ajuster selon la capacité réelle d'onboarding.
-2. Faut-il annoncer une hausse de prix post-Black-Friday ? Seulement si elle sera réellement appliquée.
-3. Paiement en 2 fois sur Setup : sans frais en plus (même total) ou majoré (alors dire le total des deux).
+1. **Plafonds gardés** : 25 codes Halloween, 50 Black Friday. Rareté réelle = conversion plus haute
+   que des promos ouvertes, et pas de sur-vente au-delà de la capacité d'onboarding.
+2. **Hausse de prix RÉELLE et annoncée** : Pro 94 -> 107 EUR, Trading 238 -> 271 EUR à partir du
+   2 décembre 2026. Les prix post-BF existent déjà côté Stripe (price_1UTxxpGX3eCPj1HevAwiJc2A,
+   price_1UTxxqGX3eCPj1HeUtpk1e0q) et le swap des liens est automatisé (script
+   D:\Venkai\stripe-swap-postbf.mjs). L'urgence est vraie, donc elle vend.
+3. **Setup 487 EUR** : paiement en 2 x 253 EUR (total 506, +19 EUR annoncé dans la même phrase).
+   Avantage net : abaisse la barrière d'entrée sans baisser le prix affiché.
