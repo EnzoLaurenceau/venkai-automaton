@@ -1,0 +1,63 @@
+name: evolve-upstream-sync
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/Conway-Research/automaton.git
+          git fetch upstream main
+
+      - name: Merge upstream (auto-evolution intake)
+        id: merge
+        run: |
+          STAMP=$(date +%Y%m%d)
+          BRANCH="evolve/upstream-${STAMP}"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          git config user.name "venkai-automaton-evolve"
+          git config user.email "evolve@venkai.fr"
+          git checkout -b "$BRANCH"
+          if git merge --no-ff upstream/main -m "chore(evolve): sync upstream Conway-Research/automaton"; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            git push origin "$BRANCH"
+          else
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            git merge --abort
+          fi
+
+      - name: Open sync PR
+        if: steps.merge.outputs.conflict == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create --base main --head "${{ steps.merge.outputs.branch }}" \
+            --title "chore(evolve): sync upstream ${{ steps.merge.outputs.branch }}" \
+            --body "Auto-evolution: merge amont de Conway-Research/automaton. Vérifier la couche VENKAI.md avant fusion." \
+            || true
+
+      - name: Open conflict issue
+        if: steps.merge.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+          gh issue create --title "evolve/conflict: upstream ${{ steps.merge.outputs.branch }}" \
+            --body "Merge amont en conflit. Fichiers: ${CONFLICTS}" \
+            --label "evolve/conflict" \
+            || gh issue create --title "evolve/conflict: upstream ${{ steps.merge.outputs.branch }}" \
+            --body "Merge amont en conflit. Fichiers: ${CONFLICTS}"
