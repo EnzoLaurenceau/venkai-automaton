@@ -11,6 +11,7 @@ const PORT = Number(process.env.VENKAI_DASHBOARD_PORT || 7787);
 
 function seed(): void {
   const store = createStore(DB);
+  seedLinks(store);
   const count = (store.db.prepare("SELECT COUNT(*) AS n FROM venkai_events").get() as { n: number }).n;
   if (count > 0) return;
 
@@ -34,6 +35,22 @@ function seed(): void {
     { ts: at(60), kind: "cost", label: "Coût d'existence : Hetzner cx22 (estimate 13 cts/jour)", valueCents: 13 },
   ];
   for (const e of events) store.log({ ...e, kind: e.kind as never, valueCents: (e as { valueCents?: number }).valueCents });
+
+}
+
+function seedLinks(store: ReturnType<typeof createStore>): void {
+  // Tracked money links: /go/<key>?ch=<channel> -> Stripe. Funnel reads these.
+  const links: Array<[string, string]> = [
+    ["pro-a", "https://buy.stripe.com/fZu3cv0Lmebyakk3BH5AQ02"],
+    ["pro-b", "https://buy.stripe.com/4gM9ATcu4ffCdwwegl5AQ06"],
+    ["trading-a", "https://buy.stripe.com/fZucN50Lm4AYboo5JP5AQ03"],
+    ["trading-b", "https://buy.stripe.com/4gM6oH51Cebydww8W15AQ07"],
+    ["skills-a", "https://buy.stripe.com/dRm6oH0Lm0kI9gg4FL5AQ04"],
+    ["skills-b", "https://buy.stripe.com/00w5kDfGg5F28cca055AQ08"],
+    ["setup-a", "https://buy.stripe.com/7sY9AT51C3wU644fkp5AQ05"],
+    ["setup-b", "https://buy.stripe.com/cNi14n0Lm6J65004FL5AQ09"],
+  ];
+  for (const [key, url] of links) store.saveLink(key, url, "direct");
 }
 
 seed();

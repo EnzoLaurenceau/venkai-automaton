@@ -17,6 +17,8 @@ export interface WebhookDeps {
   db: Database.Database;
   /** Agent treasury account credited on payment (the agent finances itself). */
   treasuryAccount?: string;
+  /** Hook to feed the value dashboard (funnel tracking: checkout started / paid). */
+  onEvent?: (e: { ts: string; kind: "checkout" | "revenue"; label: string; valueCents?: number; url?: string }) => void;
   now?: () => number;
 }
 
@@ -47,11 +49,17 @@ export function createWebhookHandler(deps: WebhookDeps): (payload: string, signa
     const dedup = deps.db.prepare("SELECT id FROM venkai_webhook_events WHERE id = ?").get(event.id);
     if (dedup) return { status: 200, body: "already processed" };
 
+    const obj = event.data.object as Record<string, unknown>;
+    const offer = offerFromEvent(event);
+    const ch = String((obj.metadata as Record<string, string> | undefined)?.utm_source ?? (obj.metadata as Record<string, string> | undefined)?.channel ?? "direct");
+    if (event.type === "checkout.session.created") {
+      deps.onEvent?.({ ts: new Date().toISOString(), kind: "checkout", label: offer ?? "unknown", url: ch });
+    }
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Record<string, unknown>;
-      const offer = offerFromEvent(event);
       const email = String(session.customer_details ? (session.customer_details as { email?: string }).email ?? "" : "");
       const amount = Number(session.amount_total ?? 0);
+      deps.onEvent?.({ ts: new Date().toISOString(), kind: "revenue", label: offer ?? "unknown", valueCents: amount, url: ch });
 
       if (offer) {
         const treasury = deps.treasuryAccount || "agent:treasury";
@@ -65,15 +73,25 @@ export function createWebhookHandler(deps: WebhookDeps): (payload: string, signa
   };
 }
 
-export function startWebhookServer(port = Number(process.env.PORT || 8787)): http.Server {
+export async function startWebhookServer(port = Number(process.env.PORT || 8787)): Promise<http.Server> {
   const secret = process.env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET_LIVE || "";
   if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET missing");
   const db = new Database(process.env.VENKAI_LEDGER_DB || "venkai-ledger.db");
+  // Feed the value dashboard funnel when it runs on the same box.
+  let onEvent: WebhookDeps["onEvent"];
+  try {
+    const { createStore } = await import("../dashboard/server.js");
+    const store = createStore(process.env.VENKAI_DASHBOARD_DB || "venkai-dashboard.db");
+    onEvent = (e) => store.log({ ...e, kind: e.kind });
+  } catch {
+    onEvent = undefined;
+  }
   const handler = createWebhookHandler({
     secret,
     ledger: createLedger(db),
     provisioner: createProvisioner(loadProvisionerEnv()),
     db,
+    onEvent,
   });
 
   const server = http.createServer((req, res) => {
@@ -94,6 +112,5 @@ export function startWebhookServer(port = Number(process.env.PORT || 8787)): htt
 }
 
 if (process.argv[1] && process.argv[1].endsWith("webhook-server.js")) {
-  startWebhookServer();
-  console.log("venkai webhook server listening (Stripe -> provision)");
+  void startWebhookServer().then(() => console.log("venkai webhook server listening (Stripe -> provision)"));
 }

@@ -10,7 +10,7 @@ import type BetterSqlite3 from "better-sqlite3";
 
 export interface ValueEvent {
   ts: string;
-  kind: "revenue" | "cost" | "output" | "growth" | "infra" | "test" | "code";
+  kind: "revenue" | "cost" | "output" | "growth" | "infra" | "test" | "code" | "click" | "checkout";
   label: string;
   valueCents?: number;
   url?: string;
@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS venkai_events (
   url TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_venkai_events_ts ON venkai_events(ts);
+CREATE TABLE IF NOT EXISTS venkai_links (
+  key TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  channel TEXT DEFAULT 'direct',
+  created_at TEXT NOT NULL
+);
 `;
 
 export function createStore(dbPath: string) {
@@ -62,6 +68,42 @@ export function createStore(dbPath: string) {
         COALESCE(SUM(CASE WHEN kind='test' THEN 1 ELSE 0 END),0) AS tests
       FROM venkai_events`).get() as Record<string, number>;
       return row;
+    },
+    saveLink(key: string, url: string, channel = "direct"): void {
+      db.prepare("INSERT OR REPLACE INTO venkai_links (key, url, channel, created_at) VALUES (?, ?, ?, ?)").run(key, url, channel, new Date().toISOString());
+    },
+    getLink(key: string): { key: string; url: string; channel: string } | undefined {
+      return db.prepare("SELECT key, url, channel FROM venkai_links WHERE key = ?").get(key) as { key: string; url: string; channel: string } | undefined;
+    },
+    listLinks(): Array<{ key: string; url: string; channel: string }> {
+      return db.prepare("SELECT key, url, channel FROM venkai_links ORDER BY key").all() as Array<{ key: string; url: string; channel: string }>;
+    },
+    /** Full monetization funnel per link and channel: clicks -> checkouts -> paid. */
+    funnel() {
+      const rows = db.prepare(`
+        SELECT label AS key,
+               COALESCE(url,'') AS ch,
+               SUM(CASE WHEN kind='click' THEN 1 ELSE 0 END) AS clicks,
+               SUM(CASE WHEN kind='checkout' THEN 1 ELSE 0 END) AS checkouts,
+               SUM(CASE WHEN kind='revenue' THEN 1 ELSE 0 END) AS paid,
+               COALESCE(SUM(CASE WHEN kind='revenue' THEN value_cents ELSE 0 END),0) AS revenue_cents
+        FROM venkai_events
+        WHERE kind IN ('click','checkout','revenue')
+        GROUP BY label, ch
+        ORDER BY revenue_cents DESC, clicks DESC
+      `).all() as Array<{ key: string; ch: string; clicks: number; checkouts: number; paid: number; revenue_cents: number }>;
+      return rows.map((r) => ({
+        ...r,
+        clickToCheckout: r.clicks > 0 ? +(r.checkouts / r.clicks * 100).toFixed(1) : 0,
+        checkoutToPaid: r.checkouts > 0 ? +(r.paid / r.checkouts * 100).toFixed(1) : 0,
+      }));
+    },
+    /** Raw export so nothing is ever lost. */
+    dump() {
+      return {
+        events: db.prepare("SELECT ts, kind, label, value_cents, url FROM venkai_events ORDER BY ts").all(),
+        links: db.prepare("SELECT * FROM venkai_links").all(),
+      };
     },
     recent(limit = 15) {
       return (db.prepare("SELECT ts, kind, label, value_cents, url FROM venkai_events ORDER BY ts DESC, id DESC LIMIT ?").all(limit) as Array<Record<string, unknown>>).map((r) => ({
@@ -101,6 +143,8 @@ const PAGE = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>
 <div class="cards" id="cards"></div>
 <div class="tabs" id="tabs"></div>
 <div class="chart" id="chart"></div>
+<h2 style="font-size:14px">Entonnoir monetisation (clics -> checkout -> paye, par source)</h2>
+<table id="funnel"><thead><tr><th>Lien</th><th>Source</th><th>Clics</th><th>Checkouts</th><th>Payes</th><th>Conv. %</th><th>Revenus</th></tr></thead><tbody></tbody></table>
 <h2 style="font-size:14px">Raisons recentes (preuves de valeur)</h2>
 <table id="recent"><thead><tr><th>Quand</th><th>Type</th><th>Preuve</th><th>Valeur</th></tr></thead><tbody></tbody></table>
 <script>
@@ -109,10 +153,11 @@ const tabs=['minute','hour','day','week','month'];
 function el(id){return document.getElementById(id)}
 function money(c){return (c/100).toFixed(2)+' EUR'}
 async function refresh(){
-  const [totals,recent,summary]=await Promise.all([
+  const [totals,recent,summary,funnel]=await Promise.all([
     fetch('/api/totals').then(r=>r.json()),
     fetch('/api/recent').then(r=>r.json()),
     fetch('/api/summary?bucket='+bucket).then(r=>r.json()),
+    fetch('/api/funnel').then(r=>r.json()),
   ]);
   el('clock').textContent=new Date().toLocaleString('fr-BE')+' - '+location.host;
   el('cards').innerHTML=[
@@ -133,6 +178,10 @@ async function refresh(){
     const cls=rev>0?'bar rev':(r.kinds.cost?'bar cost':'bar');
     return '<div class="'+cls+'" style="height:'+Math.max(4,(n/max)*140)+'px" title="'+r.bucket+' ('+n+')"></div>';
   }).join('');
+  el('funnel').querySelector('tbody').innerHTML=funnel.map(f=>
+    '<tr><td>'+f.key+'</td><td>'+(f.ch||'direct')+'</td><td>'+f.clicks+'</td><td>'+f.checkouts+'</td><td>'+f.paid+'</td><td>'+
+    (f.checkouts? f.checkoutToPaid : f.clickToCheckout)+'%</td><td>'+money(f.revenue_cents)+'</td></tr>').join('') ||
+    '<tr><td colspan="7" class="muted">Aucun clic tracke pour l\'instant</td></tr>';
   el('recent').querySelector('tbody').innerHTML=recent.map(r=>
     '<tr><td>'+r.ts.replace('T',' ')+'</td><td><span class="badge '+r.kind+'">'+r.kind+'</span></td><td>'+
     (r.url?'<a href="'+r.url+'" style="color:#7dd3fc">'+r.label+'</a>':r.label)+'</td><td>'+(r.valueCents?money(r.valueCents):'')+'</td></tr>').join('');
@@ -157,6 +206,23 @@ export function startDashboard(dbPath: string, port = 7787): http.Server {
     } else if (url.pathname === "/api/summary") {
       const bucket = (url.searchParams.get("bucket") ?? "day") as "minute" | "hour" | "day" | "week" | "month";
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(store.summary(bucket)));
+    } else if (url.pathname.startsWith("/go/")) {
+      // Tracked link: /go/<key>?ch=<channel> -> redirects to the payment link and logs the click.
+      const key = url.pathname.slice(4);
+      const link = store.getLink(key);
+      if (!link) {
+        res.writeHead(404).end("unknown link");
+        return;
+      }
+      const ch = url.searchParams.get("ch") || link.channel || "direct";
+      store.log({ ts: new Date().toISOString(), kind: "click", label: key, url: ch });
+      res.writeHead(302, { Location: link.url }).end();
+    } else if (url.pathname === "/api/funnel") {
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(store.funnel()));
+    } else if (url.pathname === "/api/export") {
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(store.dump()));
+    } else if (url.pathname === "/api/links") {
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(store.listLinks()));
     } else if (url.pathname === "/stream") {
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
       res.write("data: hello\n\n");

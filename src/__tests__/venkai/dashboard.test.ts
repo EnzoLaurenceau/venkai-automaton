@@ -19,4 +19,21 @@ describe("value dashboard store", () => {
     }
     expect(store.recent(2)[0].label).toBe("suite verte");
   });
+
+  it("tracks the monetization funnel: click -> checkout -> paid", () => {
+    const db = path.join(os.tmpdir(), `venkai-dash2-${Date.now()}.db`);
+    const store = createStore(db);
+    store.saveLink("pro-a", "https://buy.stripe.com/x", "direct");
+    expect(store.getLink("pro-a")?.url).toBe("https://buy.stripe.com/x");
+    const ts = new Date().toISOString();
+    store.log({ ts, kind: "click", label: "pro-a", url: "reddit" });
+    store.log({ ts, kind: "click", label: "pro-a", url: "reddit" });
+    store.log({ ts, kind: "checkout", label: "pro-a", url: "reddit" });
+    store.log({ ts, kind: "revenue", label: "pro-a", url: "reddit", valueCents: 9400 });
+    const f = store.funnel();
+    expect(f[0]).toMatchObject({ key: "pro-a", ch: "reddit", clicks: 2, checkouts: 1, paid: 1, revenue_cents: 9400, checkoutToPaid: 100 });
+    const dump = store.dump();
+    expect((dump.events as unknown[]).length).toBe(4);
+    expect((dump.links as unknown[]).length).toBe(1);
+  });
 });
