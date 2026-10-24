@@ -15,6 +15,7 @@ import { loadConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
 import { createConwayClient } from "./conway/client.js";
 import { createVenkaiClient } from "./venkai/infra/client.js";
+import { createVenkaiCreditsAdapter } from "./venkai/billing/credits-adapter.js";
 import { createInferenceClient } from "./conway/inference.js";
 import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
@@ -241,9 +242,13 @@ async function run(): Promise<void> {
 
   // Create Conway client — or the Venkai self-hosted client (VENKAI_INFRA=1):
   // sandboxes run as Docker containers over SSH on Venkai's Hetzner boxes.
+  // Credits = the agent's own EUR ledger: zero bootstrap, it finances itself.
   const conway =
     process.env.VENKAI_INFRA === "1"
-      ? createVenkaiClient({ sandboxId: config.sandboxId })
+      ? createVenkaiClient({
+          sandboxId: config.sandboxId,
+          credits: createVenkaiCreditsAdapter(config.dbPath, automatonId),
+        })
       : createConwayClient({
           apiUrl: config.conwayApiUrl,
           apiKey,

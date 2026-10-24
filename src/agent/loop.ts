@@ -90,7 +90,10 @@ export interface AgentLoopOptions {
  * Run the agent loop. This is the main execution path.
  * Returns when the agent decides to sleep or when compute runs out.
  */
-export async function runAgentLoop(
+ import { createRevenueTools } from "../venkai/tools/revenue-tools.js";
+ import { createSocialTools } from "../venkai/tools/social-tools.js";
+
+ export async function runAgentLoop(
   options: AgentLoopOptions,
 ): Promise<void> {
   const { identity, config, db, conway, inference, social, skills, policyEngine, spendTracker, onStateChange, onTurnComplete, ollamaBaseUrl } =
@@ -98,7 +101,9 @@ export async function runAgentLoop(
 
   const builtinTools = createBuiltinTools(identity.sandboxId);
   const installedTools = loadInstalledTools(db);
-  const tools = [...builtinTools, ...installedTools];
+  // Venkai mode: the agent has its revenue + marketing tools (it finances itself).
+  const venkaiTools = process.env.VENKAI_INFRA === "1" ? [...createRevenueTools(), ...createSocialTools()] : [];
+  const tools = [...builtinTools, ...installedTools, ...venkaiTools];
   const toolContext: ToolContext = {
     identity,
     config,

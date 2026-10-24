@@ -15,6 +15,8 @@ export interface WebhookDeps {
   ledger: VenkaiLedger;
   provisioner: Provisioner;
   db: Database.Database;
+  /** Agent treasury account credited on payment (the agent finances itself). */
+  treasuryAccount?: string;
   now?: () => number;
 }
 
@@ -52,7 +54,8 @@ export function createWebhookHandler(deps: WebhookDeps): (payload: string, signa
       const amount = Number(session.amount_total ?? 0);
 
       if (offer) {
-        ledger.applyOnce(`stripe:${event.id}`, `customer:${email || String(session.id)}`, amount || monthlyAllowanceFor(offer), "credit", `checkout ${offer}`);
+        const treasury = deps.treasuryAccount || "agent:treasury";
+        ledger.applyOnce(`stripe:${event.id}`, treasury, amount || monthlyAllowanceFor(offer), "credit", `checkout ${offer}${email ? ` by ${email}` : ""}`);
         void provisioner.provision({ email, offer, stripeSessionId: String(session.id) }).catch(() => undefined);
       }
     }

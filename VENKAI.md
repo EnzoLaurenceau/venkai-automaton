@@ -124,7 +124,25 @@ vérifié HMAC + provisioner Hetzner/Cloudflare/Resend/Slack). Un paiement Strip
 provisionne l'agent, crée le sous-domaine `*.venkai.fr`, notifie le client et Slack.
 Idempotent par event id (les retries Stripe ne double-provisionnent pas).
 
-## 7. Garanties conservées
+## 7. Mode autonome : l'agent se finance tout seul (zéro bootstrap)
+
+Personne ne donne d'argent à l'agent. Il démarre avec une trésorerie à 0 EUR et paie
+son existence par son travail (constitution Law II). L'infra est déjà là (MiMo, Hetzner,
+venkai.fr, skills), ce qui lui suffit pour produire de la valeur.
+
+- **Trésorerie** : `src/venkai/billing/credits-adapter.ts` — le "crédit" de l'agent = son
+  solde EUR dans son propre ledger (`agent:<id>`), pas des jetons Conway.
+- **Revenus** : `src/venkai/tools/revenue-tools.ts` — `create_payment_request` (Stripe payment
+  link qu'il crée lui-même pour du travail vendu) + `check_earnings`. Le webhook Stripe crédite
+  sa trésorerie automatiquement à chaque paiement.
+- **Marketing** : `src/venkai/tools/social-tools.ts` — `publish_x/instagram/tiktok/producthunt`,
+  il fait sa propre promo (le playbook Conway : la self-promotion fait partie du travail honnête).
+- **Coûts** : `recordDailyCost()` débite l'hébergement (13 cts/jour, estimate) pour que les
+  survival tiers (normal / low_compute / critical / dead) réagissent à une vraie économie.
+- **Genesis** : `scripts/venkai-rules.txt` — "nobody funds you... if you earn, you live".
+- Câblage : `VENKAI_INFRA=1` active le tout (client infra + outils revenu/social + adapter).
+
+## 8. Garanties conservées
 
 - `constitution.md` upstream intact (Law I : jamais de mal ; Law II : travail
   honnête ; Law III : jamais tromper). Toute divergence business se fait DANS ces lois.

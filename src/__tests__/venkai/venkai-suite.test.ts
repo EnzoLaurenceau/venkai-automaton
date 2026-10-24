@@ -5,6 +5,7 @@ import { createLedger, formatEur } from "../../venkai/billing/ledger.js";
 import { verifyWebhookSignature, offerFromEvent, ENTITLEMENTS, type StripeEvent } from "../../venkai/billing/stripe-billing.js";
 import { createWebhookHandler } from "../../venkai/billing/webhook-server.js";
 import { createProvisioner } from "../../venkai/billing/provisioner.js";
+import { createVenkaiCreditsAdapter, agentAccount, COST_SCHEDULE } from "../../venkai/billing/credits-adapter.js";
 import { createVenkaiClient, loadInfraConfig } from "../../venkai/infra/client.js";
 import { loadMcpBridgeTools, createMcpClient } from "../../venkai/tools/mcp-bridge.js";
 import { createInlinePool, createWorkerPool } from "../../venkai/orchestration/worker-pool.js";
@@ -95,7 +96,7 @@ describe("webhook handler", () => {
     expect(handler(payload, sig).status).toBe(200);
     await new Promise((r) => setTimeout(r, 10));
     expect(provisioned).toBe(1);
-    expect(ledger.balanceCents("customer:client@example.com")).toBe(9400);
+    expect(ledger.balanceCents("agent:treasury")).toBe(9400);
     // Stripe retry: dedup, no double provision
     expect(handler(payload, sig).body).toBe("already processed");
     await new Promise((r) => setTimeout(r, 10));
@@ -123,6 +124,24 @@ describe("provisioner", () => {
     expect(calls.some((c) => c.includes("cloudflare.com"))).toBe(true);
     expect(calls.some((c) => c.includes("resend.com"))).toBe(true);
     expect(calls.some((c) => c.includes("hooks.slack.test"))).toBe(true);
+  });
+});
+
+describe("credits adapter (zero bootstrap self-financing)", () => {
+  it("starts at zero, earns, pays its own costs", () => {
+    const tmp = path.join(os.tmpdir(), `venkai-${Date.now()}.db`);
+    const adapter = createVenkaiCreditsAdapter(tmp, "agent-1");
+    expect(adapter.account).toBe(agentAccount("agent-1"));
+    expect(adapter.balance()).toBe(0); // nobody funds the agent
+    adapter.earn(9400, "stripe:evt1", "checkout automaton-pro");
+    expect(adapter.balance()).toBe(9400);
+    adapter.earn(9400, "stripe:evt1", "retry must not double-credit");
+    expect(adapter.balance()).toBe(9400);
+    const after = adapter.recordDailyCost(3);
+    expect(after).toBe(9400 - COST_SCHEDULE.hostingCentsPerDay * 3);
+    const t = adapter.transfer("client-x", 1000, "partial payout");
+    expect(t.status).toBe("completed");
+    expect(adapter.balance()).toBe(9400 - COST_SCHEDULE.hostingCentsPerDay * 3 - 1000);
   });
 });
 
